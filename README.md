@@ -6,11 +6,11 @@ Projeto acadêmico integrado entre as disciplinas de **Processamento de Imagens 
 
 ## Status do Projeto
 
-Esta etapa corresponde ao **planejamento inicial e à documentação** do projeto.
+Esta versão corresponde à entrega de **Processamento de Imagens** (19/10/2026).
 
-Nenhum modelo foi treinado até o momento e a integração com IA Generativa ainda **não** foi implementada. Todo o conteúdo abaixo descreve o pipeline **proposto** e as decisões técnicas já tomadas. Treinamento, avaliação e integração generativa serão desenvolvidos nas etapas seguintes.
-
-Não há, portanto, métricas, resultados experimentais ou demonstrações neste repositório.
+- **Neste repositório:** o serviço de processamento de imagens (`POST /process`), com testes, e a avaliação A/B das técnicas de realce com o modelo treinado (`best.pt`, um YOLOv8n), feita no split de validação. Os resultados estão na seção **Serviço de processamento de imagens**.
+- **Fora deste repositório:** o serviço do modelo (`POST /detect`), do Vini. O contrato entre os dois serviços está em [`docs/contrato-api.md`](docs/contrato-api.md).
+- **Ainda não implementado:** a integração com IA Generativa e a avaliação final no split de teste. Neste repositório, a Etapa 5 (estado por EPI) existe, por enquanto, só no script que gera as figuras da apresentação.
 
 ---
 
@@ -125,23 +125,23 @@ O tema é relevante do ponto de vista acadêmico porque exige um pipeline comple
 
 ```mermaid
 flowchart TD
-    A[Imagem de entrada] --> B[Carregamento da imagem]
-    B --> C[Preparação: resize / letterbox / normalização]
-    C --> D[Inferência com YOLO11n fine-tuned]
+    A[Imagem de entrada] --> B["Carregamento da imagem (nosso serviço, POST /process)"]
+    B --> C["Preparação: resize / letterbox / normalização (Ultralytics, serviço do modelo)"]
+    C --> D[Inferência com YOLOv8n fine-tuned]
     D --> E[Bounding boxes + classe + confidence]
     E --> F[Filtragem e interpretação das detecções]
     F --> G[Resultado estruturado dos EPIs]
 ```
 
-**Etapa 1 — Carregamento da imagem.** A imagem é lida do disco e convertida para um array numérico (matriz de pixels), formato exigido pelas etapas seguintes.
+**Etapa 1 — Carregamento da imagem.** A imagem é lida e convertida para um array numérico (matriz de pixels), formato exigido pelas etapas seguintes. No protótipo, isso acontece no nosso serviço (`POST /process`): a foto chega por upload, o formato é validado pelo conteúdo, a orientação EXIF é aplicada e o serviço devolve um PNG sem perdas, do mesmo tamanho da foto orientada.
 
-**Etapa 2 — Preparação / resize / letterbox.** A imagem é redimensionada para a resolução de entrada esperada pela rede. O *letterbox* aplica o redimensionamento preservando a proporção original e preenchendo as bordas, o que evita distorcer objetos como capacetes e coletes. Também ocorre a normalização dos valores de pixel.
+**Etapa 2 — Preparação / resize / letterbox.** A imagem é redimensionada para a resolução de entrada esperada pela rede. O *letterbox* aplica o redimensionamento preservando a proporção original e preenchendo as bordas, o que evita distorcer objetos como capacetes e coletes. Também ocorre a normalização dos valores de pixel. Essa etapa fica dentro do Ultralytics, no serviço do modelo; o nosso serviço não redimensiona a imagem.
 
-**Etapa 3 — Inferência com YOLO11n.** A imagem preparada é submetida ao modelo de detecção, que produz um conjunto de candidatos de detecção sobre a imagem inteira em uma única passagem.
+**Etapa 3 — Inferência com YOLOv8n.** A imagem preparada é submetida ao modelo de detecção, que produz um conjunto de candidatos de detecção sobre a imagem inteira em uma única passagem.
 
 **Etapa 4 — Bounding boxes, classe e confidence.** Cada detecção resultante contém as coordenadas da caixa delimitadora, a classe prevista e um valor de confiança. Detecções redundantes sobre o mesmo objeto são eliminadas por *Non-Maximum Suppression* (NMS).
 
-**Etapa 5 — Filtragem e interpretação das detecções.** É a etapa de lógica própria do projeto: aplicação de limiar mínimo de confiança, descarte de classes fora do escopo e consolidação das detecções em um estado por EPI. Aqui será tratada explicitamente a distinção entre três situações: EPI identificado, ausência explicitamente identificada (classe negativa detectada) e resultado indeterminado (nenhuma das duas).
+**Etapa 5 — Filtragem e interpretação das detecções.** É a etapa de lógica própria do projeto: aplicação de limiar mínimo de confiança, descarte de classes fora do escopo e consolidação das detecções em um estado por EPI. Aqui será tratada explicitamente a distinção entre três situações: EPI identificado, ausência explicitamente identificada (classe negativa detectada) e resultado indeterminado (nenhuma das duas). Se o modelo detectar na mesma imagem a classe positiva e a negativa do mesmo EPI (por exemplo, `helmet` e `no-helmet`), o estado desse EPI também é **indeterminado**. Neste repositório, a regra está em `scripts/make_segmentation_figures.py`, com testes, e é usada para gerar as figuras da apresentação; ela ainda não faz parte do nosso serviço.
 
 **Etapa 6 — Resultado estruturado.** A saída final da etapa de visão é um objeto estruturado, por exemplo:
 
@@ -158,13 +158,79 @@ oculos:   ausencia explicitamente identificada
 ## Metodologia de Visão Computacional
 
 - **Tipo de problema:** Object Detection.
-- **Modelo:** YOLO11n (variante *nano*), com **pesos pré-treinados**.
+- **Modelo:** YOLOv8n (variante *nano*), com **pesos pré-treinados** (`yolov8n.pt`).
 - **Framework:** Ultralytics.
 - **Estratégia de treinamento:** Transfer Learning / fine-tuning a partir dos pesos pré-treinados — a rede **não** será treinada do zero.
 
 **Por que Object Detection.** O dataset escolhido já é anotado com *bounding boxes*. Converter o problema para classificação de imagem descartaria a informação de localização, sem simplificar o projeto de forma relevante. Além disso, a detecção permite tratar cada EPI como um objeto independente na cena.
 
-**Por que YOLO11n com transfer learning.** Os pesos pré-treinados já codificam características visuais genéricas, o que reduz drasticamente a quantidade de dados e de tempo de treinamento necessários. A variante *nano* é a mais leve da família, adequada ao hardware disponível e ao prazo do projeto acadêmico.
+**Por que YOLOv8n com transfer learning.** Os pesos pré-treinados já codificam características visuais genéricas, o que reduz drasticamente a quantidade de dados e de tempo de treinamento necessários. A variante *nano* é a mais leve da família, adequada ao hardware disponível e ao prazo do projeto acadêmico. O fine-tuning foi feito no YOLOv8n; manter a família evita retreinar.
+
+> **Mudança em relação ao planejamento:** a primeira versão deste README previa o YOLO11n. O único treino feito foi com o YOLOv8n, e retreinar não cabia no prazo. A família, o framework (Ultralytics) e as etapas do pipeline são os mesmos.
+
+---
+
+## Serviço de processamento de imagens (este repositório)
+
+O serviço recebe a foto, prepara-a para o modelo e devolve um PNG. O contrato completo (parâmetros, cabeçalhos e erros) está em [`docs/contrato-api.md`](docs/contrato-api.md).
+
+**Fluxo combinado entre os serviços.** O app do Vini envia a foto para o nosso `POST /process`. Respondemos com um PNG sem perdas, do mesmo tamanho da imagem orientada, e o app repassa esse PNG ao `POST /detect` do Vini. O letterbox, a normalização e o NMS continuam dentro do Ultralytics, no serviço do Vini.
+
+**O que o serviço faz:**
+
+- identifica o formato (JPEG ou PNG) pelos primeiros bytes e recusa outros formatos, arquivos vazios ou corrompidos e arquivos acima de 10 MiB ou de 40 milhões de pixels;
+- aplica a orientação EXIF (foto de celular "deitada" fica em pé) e devolve o PNG sem EXIF;
+- aplica uma técnica de realce opcional; o padrão é `none`, isto é, nenhuma;
+- mede a nitidez por FFT (fração da energia do espectro acima de 0,25 ciclo/pixel, com a imagem redimensionada até o lado maior ter 640 px) e a devolve no cabeçalho `X-Sharpness-HF-Ratio`. Ainda não há limiar calibrado: o valor é só informativo.
+
+**Como rodar** (Python 3.14; a porta padrão do serviço é a 8001):
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest
+.venv/bin/python -m uvicorn --app-dir src epi_imgproc.api:app --port 8001
+```
+
+### Avaliação A/B das técnicas de pré-processamento
+
+**Pergunta:** algum tratamento de imagem melhora o modelo? Avaliamos a linha de base e 7 técnicas nas 1026 imagens do split de validação (versão 1 do dataset no Roboflow). Todas passaram pelo mesmo pipeline do serviço, com o mesmo `best.pt`. O split de teste não foi usado.
+
+**Regra, registrada antes da rodada:** uma técnica só vira padrão se o mAP50 das 6 classes do README subir e o recall de nenhuma delas cair, em relação à linha de base.
+
+| Técnica | mAP50 (6 classes) | recall helmet | recall no-helmet | recall vest | recall no-vest | recall goggles | recall no-goggles | Veredito |
+|---|---|---|---|---|---|---|---|---|
+| nenhuma (`none`, linha de base) | 0,6804 | 0,9486 | 0,2913 | 0,9489 | 0,7798 | 0,6814 | 0,5677 | n/a |
+| equalização de histograma | 0,6727 | 0,9495 | 0,3107 | 0,9463 | 0,7752 | 0,6195 | 0,4968 | reprovada |
+| CLAHE | 0,6770 | 0,9486 | 0,3107 | 0,9419 | 0,7752 | 0,6460 | 0,5871 | reprovada |
+| correção gama (0,8) | 0,6789 | 0,9520 | 0,3204 | 0,9445 | 0,7936 | 0,6903 | 0,5419 | reprovada |
+| suavização gaussiana | 0,6743 | 0,9334 | 0,2913 | 0,9419 | 0,7844 | 0,6106 | 0,5613 | reprovada |
+| unsharp mask | 0,6768 | 0,9478 | 0,3107 | 0,9541 | 0,7569 | 0,6726 | 0,5484 | reprovada |
+| passa-baixa FFT | 0,6809 | 0,9469 | 0,2913 | 0,9445 | 0,7890 | 0,6372 | 0,5613 | reprovada |
+| ênfase de altas frequências FFT | 0,6785 | 0,9495 | 0,3010 | 0,9489 | 0,7706 | 0,6903 | 0,5806 | reprovada |
+
+Como cada métrica foi medida:
+
+- **mAP50:** validação padrão do Ultralytics (`model.val`), com conf 0,001, IoU do NMS 0,7, `imgsz` 640, `rect` e `max_det` 300. A coluna é a média do AP50 das 6 classes do README.
+- **Recall:** contagem exata, nas predições dessa mesma validação. Para cada classe, conta as predições com confiança ≥ 0,25 que o Ultralytics casou com uma caixa anotada da mesma classe com IoU ≥ 0,5 e divide pelo número de caixas anotadas da classe. A primeira rodada (16/10) lia o recall de uma curva interpolada do Ultralytics. A contagem exata (17/10) mudou 21 dos 48 valores de recall e nenhum veredito; o mAP50 ficou igual em todos os dígitos.
+
+**Resultado:** nenhuma das 7 técnicas, com os parâmetros testados, passou na regra nesta validação. Por isso o serviço entrega, por padrão, a imagem sem tratamento (`technique=none`). O passa-baixa FFT foi o único a subir o mAP50, em menos de 0,001 (0,6809 contra 0,6804), mas o recall de 4 classes caiu. Os parâmetros de cada técnica estão em [`docs/contrato-api.md`](docs/contrato-api.md).
+
+Detalhes da avaliação:
+
+- O script é `scripts/run_ab_eval.py`. As 8 rodadas avaliaram as 1026 imagens, conforme a contagem do próprio Ultralytics, e a linha de base é idêntica pixel a pixel ao que o Ultralytics leria do arquivo original.
+- Na cópia dos rótulos usada na avaliação, 16 anotações em polígono foram convertidas em caixas (a mesma regra do Ultralytics). Sem isso, o Ultralytics descartaria 6 imagens.
+- A versão do dataset usada no treino ainda não foi confirmada (o checkpoint aponta `PPE-detection-1`). Se imagens desta validação estiveram no treino, os valores absolutos estão otimistas; por isso as técnicas são comparadas só entre si.
+- Há uma única divisão de validação, e as diferenças de mAP50 em relação à linha de base ficam entre −0,0078 e +0,00045. Diferenças dessa ordem podem ser ruído.
+
+### Decisões tomadas depois do planejamento
+
+| Decisão | Motivo |
+| --- | --- |
+| Modelo YOLOv8n no lugar do YOLO11n previsto | O único treino feito foi com o YOLOv8n (ver **Metodologia de Visão Computacional**). |
+| Dois serviços REST: processamento de imagens (este repositório, com FastAPI) e modelo (`POST /detect`, do Vini) | Divisão do trabalho no grupo; o contrato entre os dois serviços está em `docs/contrato-api.md`. |
+| Porta padrão 8001 para o nosso serviço | Permite rodar os dois serviços na mesma máquina. |
+| Conflito na Etapa 5 (classe positiva e negativa do mesmo EPI na mesma imagem) vira "indeterminado" | Um trabalhador principal não pode usar e não usar o mesmo EPI ao mesmo tempo. |
 
 ---
 
@@ -177,7 +243,7 @@ O projeto combina **duas IAs com responsabilidades distintas e não sobrepostas*
 ```mermaid
 flowchart TD
     A[Imagem de entrada] --> B[Processamento da imagem]
-    B --> C[YOLO11n fine-tuned]
+    B --> C[YOLOv8n fine-tuned]
     C --> D[Deteccoes: boxes + classe + confidence]
     D --> E[Resultado estruturado dos EPIs]
     E --> F[Montagem do prompt estruturado]
@@ -189,7 +255,7 @@ flowchart TD
 
 | Componente | Responsabilidade |
 | --- | --- |
-| **Visão Computacional (YOLO11n)** | Identificar os EPIs na imagem e produzir um resultado estruturado e verificável. |
+| **Visão Computacional (YOLOv8n)** | Identificar os EPIs na imagem e produzir um resultado estruturado e verificável. |
 | **IA Generativa (LLM)** | Interpretar o resultado estruturado recebido e transformá-lo em uma resposta textual compreensível e contextualizada. |
 
 A IA Generativa **não é responsável por detectar os EPIs** e não recebe a tarefa de analisar a imagem. Ela atua exclusivamente sobre o dado já estruturado pela etapa de visão.
@@ -215,6 +281,7 @@ A API / modelo de IA Generativa **ainda não foi definida**. A escolha será fei
 ## Limitações e cuidados
 
 - **`goggles` é uma classe visualmente mais difícil:** óculos de proteção são objetos pequenos, frequentemente transparentes e sujeitos a oclusão, o que tende a reduzir a qualidade da detecção.
+- **Classes fracas na validação:** com o `best.pt`, o recall é de 0,29 em `no-helmet`, 0,57 em `no-goggles` e 0,68 em `goggles` (seção **Serviço de processamento de imagens**). A maioria das ausências de capacete anotadas não é detectada, e, quando nenhuma das duas classes aparece, o estado fica indeterminado.
 - **Qualidade das annotations:** o dataset é de origem pública e as anotações precisam ser inspecionadas antes do treinamento final.
 - **Ausência de detecção ≠ ausência real:** a não detecção de uma classe positiva não será tratada como comprovação de que o EPI não está sendo usado.
 - **Protótipo acadêmico:** o sistema não é uma solução certificada de segurança do trabalho e não substitui inspeção humana.
@@ -222,11 +289,15 @@ A API / modelo de IA Generativa **ainda não foi definida**. A escolha será fei
 
 ---
 
-## Tecnologias planejadas
+## Tecnologias
 
-- Python
-- Ultralytics / YOLO11n
-- OpenCV
+- Python 3.14
+- Ultralytics / YOLOv8n (PyTorch)
+- OpenCV, NumPy e Pillow
+- FastAPI e uvicorn (serviço REST)
+- pytest (testes)
+
+As versões usadas estão fixadas no [`requirements.txt`](requirements.txt).
 
 ---
 
@@ -235,8 +306,8 @@ A API / modelo de IA Generativa **ainda não foi definida**. A escolha será fei
 1. Inspeção do dataset e da qualidade das annotations.
 2. Preparação e filtragem das classes dentro do escopo.
 3. Protótipo do pipeline com um subconjunto representativo.
-4. Fine-tuning do YOLO11n.
-5. Avaliação dos resultados.
+4. Fine-tuning do YOLOv8n (feito: `best.pt`).
+5. Avaliação dos resultados (feita na validação para as técnicas de pré-processamento; falta a avaliação final no split de teste).
 6. Definição da ferramenta generativa e integração.
 7. Demonstração final.
 

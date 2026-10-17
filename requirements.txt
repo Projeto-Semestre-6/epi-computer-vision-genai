@@ -1,2 +1,12 @@
-ultralytics
-opencv-python
+# Python 3.14. Versions of the environment used for the tests and the A/B evaluation (17/10/2026).
+# PyTorch comes in as an Ultralytics dependency; that environment used the CPU build (torch 2.14.1+cpu).
+ultralytics==8.4.178
+opencv-python==5.0.0.93
+numpy==2.5.2
+pillow==12.3.0
+pyyaml==6.0.3
+fastapi==0.143.2
+uvicorn==0.54.0
+python-multipart==0.0.32
+pytest==9.1.1
+httpx==0.28.1

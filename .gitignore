@@ -1,0 +1,9 @@
+ignored/
+AGENTS.md
+CLAUDE.md
+.agent-work/
+__pycache__/
+.pytest_cache/
+.claude/
+
+AGENTIC-ECOSYSTEM.md
