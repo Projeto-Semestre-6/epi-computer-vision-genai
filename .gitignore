@@ -1,9 +1,25 @@
+# Tudo que é local e não vai para o GitHub fica nesta pasta
 ignored/
-AGENTS.md
-CLAUDE.md
-.agent-work/
+
+# Python
 __pycache__/
 .pytest_cache/
-.claude/
+.venv/
+.env
 
-AGENTIC-ECOSYSTEM.md
+# Imagens: o dataset e as saídas do serviço ficam fora do repositório
+*.[jJ][pP][gG]
+*.[jJ][pP][eE][gG]
+*.[pP][nN][gG]
+*.[gG][iI][fF]
+*.[bB][mM][pP]
+*.[tT][iI][fF]
+*.[tT][iI][fF][fF]
+*.[wW][eE][bB][pP]
+*.[hH][eE][iI][cC]
+
+# Pesos de modelo, pacotes do dataset e saídas do Ultralytics
+*.pt
+*.onnx
+*.zip
+runs/
