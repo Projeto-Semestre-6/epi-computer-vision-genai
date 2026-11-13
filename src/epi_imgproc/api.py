@@ -12,7 +12,7 @@ from enum import Enum
 from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
-from epi_imgproc import frequency, intake, techniques
+from epi_imgproc import intake, pipeline, techniques
 
 # Not the model service's port (backend/main.py), so both services can run on one machine.
 DEFAULT_PORT = 8001
@@ -81,18 +81,15 @@ def process(
 ) -> Response:
     # Read one byte past the limit so an oversized upload is detected without loading all of it.
     data = file.file.read(intake.MAX_UPLOAD_BYTES + 1)
-    decoded = intake.decode_image(data)
-    sharpness = frequency.high_frequency_energy_ratio(decoded.pixels)
-    processed = techniques.apply_technique(technique.value, decoded.pixels)
-    height, width = processed.shape[:2]
+    result = pipeline.process_image(data, technique.value)  # PNG, upload limits, sharpness measured
     headers = {
-        "X-Technique": technique.value,
-        "X-Sharpness-HF-Ratio": f"{sharpness:.6f}",
-        "X-EXIF-Orientation": str(decoded.exif_orientation),
-        "X-Source-Format": decoded.source_format,
-        "X-Image-Size": f"{width}x{height}",
+        "X-Technique": result.technique,
+        "X-Sharpness-HF-Ratio": f"{result.sharpness:.6f}",
+        "X-EXIF-Orientation": str(result.exif_orientation),
+        "X-Source-Format": result.source_format,
+        "X-Image-Size": f"{result.width}x{result.height}",
     }
-    return Response(content=intake.encode_png(processed), media_type="image/png", headers=headers)
+    return Response(content=result.content, media_type=result.media_type, headers=headers)
 
 
 if __name__ == "__main__":

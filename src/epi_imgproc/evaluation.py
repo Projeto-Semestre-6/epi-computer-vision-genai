@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from epi_imgproc import frequency, intake, techniques
+from epi_imgproc import frequency, intake, pipeline, techniques
 
 README_CLASSES = ("helmet", "no-helmet", "vest", "no-vest", "goggles", "no-goggles")
 RECALL_CONFIDENCE = 0.25  # default `conf` of the model service's /detect (backend/main.py)
@@ -188,14 +188,13 @@ def prepare_variant(
     prepared = PreparedVariant(technique, root, root / "data.yaml", 0)
     for source in images:
         try:
-            decoded = intake.decode_image(source.read_bytes())
+            result = pipeline.process_image(source.read_bytes(), technique, measure_sharpness=technique == "none")
         except intake.IntakeError as exc:
             prepared.skipped[source.name] = exc.code
             continue
-        if technique == "none":
-            prepared.sharpness[source.name] = frequency.high_frequency_energy_ratio(decoded.pixels)
-        processed = techniques.apply_technique(technique, decoded.pixels)
-        (image_dir / f"{source.stem}.png").write_bytes(intake.encode_png(processed))
+        if result.sharpness is not None:
+            prepared.sharpness[source.name] = result.sharpness
+        (image_dir / f"{source.stem}.png").write_bytes(result.content)
         label_source = label_path_for(source)
         text = label_source.read_text() if label_source.exists() else ""
         prepared.polygon_rows += sum(1 for line in text.splitlines() if len(line.split()) > 5)

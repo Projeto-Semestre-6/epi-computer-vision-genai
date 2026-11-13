@@ -19,6 +19,7 @@ from PIL import Image
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MiB
 MAX_PIXELS = 40_000_000  # width * height; guards against decompression bombs
+JPEG_QUALITY = 95  # phase-2 dataset copies only; the endpoint answers lossless PNG
 
 JPEG_MAGIC = b"\xff\xd8\xff"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -156,4 +157,38 @@ def encode_png(pixels: np.ndarray) -> bytes:
     ok, encoded = cv2.imencode(".png", pixels)
     if not ok:
         raise RuntimeError("PNG encoding failed")
+    return encoded.tobytes()
+
+
+def jpeg_encoding(quality: int = JPEG_QUALITY) -> dict:
+    """The JPEG encoding parameters, spelled out for documentation (every treated copy uses the same ones)."""
+    return {
+        "quality": quality,
+        "chroma_subsampling": "4:2:0",
+        "progressive": False,
+        "optimized_huffman_tables": False,
+        "restart_interval": 0,
+        "metadata": "JFIF header only (no EXIF, no ICC profile)",
+        "encoder": f"OpenCV {cv2.__version__} (cv2.imencode)",
+    }
+
+
+def encode_jpeg(pixels: np.ndarray, quality: int = JPEG_QUALITY) -> bytes:
+    """Lossy baseline JPEG for the phase-2 dataset copies; no EXIF is written.
+
+    Every parameter is passed explicitly (they are OpenCV's defaults apart from the quality), so
+    the bytes do not depend on the defaults of the OpenCV build. The endpoint keeps answering PNG.
+    """
+    if not 1 <= quality <= 100:
+        raise ValueError("JPEG quality must be between 1 and 100")
+    parameters = [
+        cv2.IMWRITE_JPEG_QUALITY, quality,
+        cv2.IMWRITE_JPEG_SAMPLING_FACTOR, cv2.IMWRITE_JPEG_SAMPLING_FACTOR_420,
+        cv2.IMWRITE_JPEG_PROGRESSIVE, 0,
+        cv2.IMWRITE_JPEG_OPTIMIZE, 0,
+        cv2.IMWRITE_JPEG_RST_INTERVAL, 0,
+    ]  # fmt: skip
+    ok, encoded = cv2.imencode(".jpg", pixels, parameters)
+    if not ok:
+        raise RuntimeError("JPEG encoding failed")
     return encoded.tobytes()
