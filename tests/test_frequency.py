@@ -54,7 +54,7 @@ def test_sharpness_of_constant_image_is_zero():
 
 @pytest.mark.parametrize("width, height", [(640, 2), (2, 640), (640, 3), (3, 640), (640, 4), (4, 640), (640, 5)])
 def test_sharpness_of_a_very_short_side_follows_the_detail(width, height):
-    """Codex review #3: np.hanning(2) is [0, 0], so a 640x2 image used to score 0 whatever its detail.
+    """np.hanning(2) is [0, 0], so a 640x2 image used to score 0 whatever its detail.
     With 3 or 4 rows the window itself put half or more of the energy at the cutoff and above (a smooth
     ramp scored 0.67 and 0.5); from 5 rows on, the Hann window is kept.
 
