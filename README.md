@@ -333,6 +333,6 @@ As versões usadas estão fixadas no [`requirements.txt`](requirements.txt).
 | --- | --- |
 | 1. Nome completo dos integrantes | Seção **Integrantes** |
 | 2. Descrição detalhada do projeto, com o pipeline de processamento de imagens e explicação de cada etapa | Seções **Descrição do Projeto**, **Escopo**, **Pipeline de Processamento de Imagens** (etapas 1 a 8 e pipeline do dataset tratado) e **Serviço de processamento de imagens** |
-| 3. Descrição detalhada da integração com a disciplina de IA, com o pipeline completo | Seção **Integração com Inteligência Artificial** |
+| 3. Descrição detalhada da integração com a disciplina de IA, com o pipeline completo | Seção **Integração com Inteligência Artificial** e repositório [sentinela-epi-identificador](https://github.com/Projeto-Semestre-6/sentinela-epi-identificador) |
 | 4. Arquivo `requirements.txt` | Arquivo [`requirements.txt`](requirements.txt) na raiz do repositório |
 | 5. Link(s) do(s) dataset(s) utilizado(s) | Seção **Dataset**: dataset original no Roboflow e dataset tratado na Release |
