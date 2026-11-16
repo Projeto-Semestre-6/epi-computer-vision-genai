@@ -110,7 +110,7 @@ As métricas do projeto usam as 6 classes do escopo: `helmet`, `no-helmet`, `ves
 
 ## Pipeline de Processamento de Imagens
 
-O tratamento é feito por uma única função (`pipeline.process_image`), usada pelo serviço, pela avaliação A/B e pelo lote que gerou o dataset tratado. Assim, uma foto passa pelas mesmas etapas em qualquer um dos três.
+O tratamento é feito por uma única função (`pipeline.process_image`), usada pelo serviço, pela avaliação A/B e pelo lote que gerou o dataset tratado. Assim, uma foto passa pelas mesmas etapas em qualquer um dos três; o lote só não mede a nitidez e aceita fotos de até 50 milhões de pixels.
 
 ```mermaid
 flowchart TD
@@ -133,7 +133,7 @@ As etapas 1 a 5 acontecem neste repositório. As etapas 6 a 8 acontecem no backe
 
 **Etapa 3 — Medida de nitidez por FFT.** O serviço calcula a fração da energia do espectro de Fourier acima de 0,25 ciclo/pixel, numa versão em tons de cinza com o lado maior em 640 px, a escala que o modelo enxerga. Altas frequências são bordas e detalhes; uma foto borrada concentra a energia nas baixas frequências e tem valor menor. A medida é feita antes da técnica e devolvida no cabeçalho `X-Sharpness-HF-Ratio`. Ainda não há limiar calibrado: o valor é só informativo.
 
-**Etapa 4 — Técnica de realce (opcional).** Aplica uma das técnicas abaixo, escolhida no parâmetro `technique`. O padrão é `none`, porque nenhuma técnica passou na avaliação A/B da fase 1. As técnicas de contraste e nitidez agem só na luminosidade (canal L do espaço de cor CIELAB), para não alterar as cores, que ajudam a reconhecer o colete. Os parâmetros de vizinhança (sigma e frequência de corte) são definidos na escala de 640 px e convertidos para a resolução da foto, para que uma foto grande receba o mesmo efeito que o modelo veria numa pequena. Nenhuma técnica muda o tamanho da imagem.
+**Etapa 4 — Técnica de realce (opcional).** Aplica uma das técnicas abaixo, escolhida no parâmetro `technique`. O padrão é `none`, porque nenhuma técnica passou na avaliação A/B da fase 1. A equalização de histograma, o CLAHE, a máscara de nitidez e os dois filtros por FFT agem só na luminosidade (canal L do espaço de cor CIELAB), para não alterar as cores, que ajudam a reconhecer o colete; a correção gama e o desfoque gaussiano agem nos três canais. Os parâmetros de vizinhança (sigma e frequência de corte) são definidos na escala de 640 px e convertidos para a resolução da foto, para que uma foto grande receba o mesmo efeito que o modelo veria numa pequena. Nenhuma técnica muda o tamanho da imagem.
 
 | Técnica | Domínio | O que faz | Parâmetros |
 |---|---|---|---|
@@ -141,7 +141,7 @@ As etapas 1 a 5 acontecem neste repositório. As etapas 6 a 8 acontecem no backe
 | `histogram_equalization` | espacial | Espalha os tons da foto inteira e aumenta o contraste geral. | equalização global da luminância |
 | `clahe` | espacial | Aumenta o contraste por regiões, com limite, e realça detalhes em áreas muito escuras ou muito claras. | limite 2,0, grade 8×8 |
 | `gamma` | espacial | Clareia sombras e tons médios: `s = 255 · (r / 255)^0,8`. | gama 0,8, em cada canal |
-| `gaussian_blur` | espacial | Suaviza a foto e tira ruído e detalhes finos. | sigma 1,0 px |
+| `gaussian_blur` | espacial | Suaviza a foto e tira ruído e detalhes finos. | sigma 1,0 px, nos três canais |
 | `unsharp_mask` | espacial | Reforça bordas somando a diferença entre a foto e uma versão suavizada: `g = f + (f − suavizada)`. | sigma 1,0 px, intensidade 1,0 |
 | `fft_lowpass` | frequência | Filtro passa-baixas gaussiano no espectro: atenua as altas frequências (detalhes finos e ruído). | corte 0,25 ciclo/pixel |
 | `fft_high_emphasis` | frequência | Ênfase de altas frequências, `H = 1 + 0,5 · (1 − passa-baixas gaussiano)`: reforça bordas e mantém o resto. | corte 0,1 ciclo/pixel |
@@ -152,12 +152,12 @@ As etapas 1 a 5 acontecem neste repositório. As etapas 6 a 8 acontecem no backe
 
 **Etapa 7 — Detecção com YOLOv8n.** O modelo analisa a imagem inteira numa única passagem e devolve caixas, cada uma com classe e confiança. Caixas redundantes sobre o mesmo objeto são eliminadas por *Non-Maximum Suppression* (NMS).
 
-**Etapa 8 — Estado de cada EPI.** As detecções abaixo do limiar de confiança escolhido na interface são descartadas, e cada EPI recebe um estado: **identificado** (classe positiva detectada), **ausência** (classe negativa detectada, como `no-helmet`) ou **indeterminado** (nenhuma das duas). Se o mesmo EPI aparecer como presente e ausente, a aplicação usa a detecção de maior confiança. Exemplo de saída:
+**Etapa 8 — Estado de cada EPI.** As detecções abaixo do limiar de confiança escolhido na interface são descartadas, e cada EPI recebe um estado: **identificado** (classe positiva detectada), **ausência** (classe negativa detectada, como `no-helmet`) ou **indeterminado** (nenhuma das duas). Se o mesmo EPI aparecer como presente e ausente, a aplicação usa a detecção de maior confiança. Exemplo de resultado para os 3 EPIs do escopo:
 
 ```text
 capacete: identificado
 colete:   identificado
-oculos:   ausencia
+óculos:   ausência
 ```
 
 > **Nota sobre o framework:** o letterbox, o NMS e a execução da inferência são feitos internamente pelo **Ultralytics** e não foram reimplementados. O esforço deste repositório está no tratamento da imagem, na sua avaliação e na preparação do dataset.
@@ -177,11 +177,11 @@ flowchart TD
     G --> H["5. Confere todas as cópias"]
 ```
 
-1. **Cópias exatas:** fotos com o mesmo conteúdo (mesmo SHA-256) ficam uma vez só. Saíram 79, com prioridade teste > validação > treino.
-2. **Quase-cópias entre splits:** duas fotos são comparadas por miniaturas 64×64 em tons de cinza, pela diferença média absoluta entre elas, a menor entre os 8 espelhamentos e giros de 90° de uma delas. Até 2,0, numa escala de 0 a 255, são quase-cópias, e sai a do split de menor prioridade. Saíram 1.536 (1.358 do treino e 178 da validação). O limiar foi escolhido depois de olhar uma folha com os pares encontrados.
+1. **Cópias exatas:** fotos com o mesmo conteúdo (mesmo SHA-256) ficam no máximo uma vez. Saíram 79, com prioridade teste > validação > treino.
+2. **Quase-cópias entre splits:** duas fotos são comparadas por miniaturas 64×64 em tons de cinza, pela diferença média absoluta entre elas, a menor entre os 8 espelhamentos e giros de 90° de uma delas. Até 2,0, numa escala de 0 a 255, são quase-cópias, e sai a do split de menor prioridade quando a outra permanece no dataset. Saíram 1.536 (1.358 do treino e 178 da validação). O limiar foi escolhido depois de olhar uma folha com os pares encontrados.
 3. **Polígonos:** as linhas de rótulo em polígono viram a caixa que envolve os pontos. O resto dos rótulos fica igual, byte a byte.
 4. **Tratamento:** cada técnica gera uma cópia completa, com os mesmos nomes de arquivo e os mesmos rótulos de `cru/`.
-5. **Conferência:** o comando `verify` confere bytes, rótulos, nomes das classes e a seleção de fotos em todas as cópias.
+5. **Conferência:** o comando `verify` confere os bytes de `cru/` contra o export, a lista de arquivos, o formato e as dimensões das cópias tratadas, os rótulos, os nomes das classes, a seleção de fotos e o manifesto.
 
 ---
 
@@ -238,14 +238,16 @@ curl -sS -D - -o processada.png -F "file=@foto.jpg" "http://localhost:8001/proce
 | passa-baixa FFT | 0,6809 | 0,9469 | 0,2913 | 0,9445 | 0,7890 | 0,6372 | 0,5613 | reprovada |
 | ênfase de altas frequências FFT | 0,6785 | 0,9495 | 0,3010 | 0,9489 | 0,7706 | 0,6903 | 0,5806 | reprovada |
 
+O **recall** é a fração das caixas anotadas que o modelo encontrou. O **mAP50** resume, para cada classe, o equilíbrio entre acertar o que detecta e encontrar tudo o que existe, contando como acerto a caixa com IoU (interseção sobre união com a caixa anotada) de pelo menos 0,5, e tira a média entre as classes.
+
 Como cada métrica foi medida:
 
 - **mAP50:** validação padrão do Ultralytics (`model.val`), com conf 0,001, IoU do NMS 0,7, `imgsz` 640, `rect` e `max_det` 300. A coluna é a média do AP50 das 6 classes do escopo.
 - **Recall:** contagem exata, nas predições dessa mesma validação. Para cada classe, conta as predições com confiança ≥ 0,25 que o Ultralytics casou com uma caixa anotada da mesma classe com IoU ≥ 0,5 e divide pelo número de caixas anotadas da classe.
 
-**Resultado:** nenhuma das 7 técnicas, com os parâmetros testados, passou na regra. Por isso o serviço entrega, por padrão, a imagem sem tratamento (`technique=none`). O passa-baixa FFT foi o único a subir o mAP50, em menos de 0,001 (0,6809 contra 0,6804), mas o recall de 4 classes caiu.
+**Resultado:** nenhuma das 7 técnicas, com os parâmetros testados, passou na regra nesta validação. Por isso o serviço entrega, por padrão, a imagem sem tratamento (`technique=none`). O passa-baixa FFT foi o único a subir o mAP50, em menos de 0,001 (0,6809 contra 0,6804), mas o recall de 4 classes caiu.
 
-**Por que a fase 2.** O modelo foi treinado com fotos sem tratamento, então uma técnica aplicada só na hora da detecção mostra ao modelo imagens diferentes das que ele aprendeu. A fase 2 treina um modelo em cada cópia do dataset tratado e compara cada uma com `cru` e `tratado-none` (o controle, que só regrava a foto em JPEG).
+**Por que a fase 2.** O modelo foi treinado com fotos sem tratamento, então uma técnica aplicada só na hora da detecção mostra ao modelo imagens diferentes das que ele aprendeu. A fase 2 vai treinar um modelo em cada cópia do dataset tratado e comparar cada uma com `cru` e `tratado-none` (o controle, que só regrava a foto em JPEG).
 
 Detalhes da avaliação:
 
@@ -299,9 +301,10 @@ O planejamento inicial previa uma etapa em que um modelo de IA Generativa (LLM) 
 ## Limitações e cuidados
 
 - **`goggles` é uma classe visualmente mais difícil:** óculos de proteção são objetos pequenos, frequentemente transparentes e sujeitos a oclusão, o que tende a reduzir a qualidade da detecção.
-- **Classes fracas na validação:** com o `best.pt`, o recall é de 0,29 em `no-helmet`, 0,57 em `no-goggles` e 0,68 em `goggles` (seção **Serviço de processamento de imagens**). A maioria das ausências de capacete anotadas não é detectada, e, quando nenhuma das duas classes aparece, o estado fica indeterminado.
+- **Classes fracas na validação:** com o `best.pt`, o recall é de 0,29 em `no-helmet`, 0,57 em `no-goggles` e 0,68 em `goggles` (subseção **Avaliação A/B das técnicas de pré-processamento**). A maioria das ausências de capacete anotadas não é detectada, e, quando nenhuma das duas classes aparece, o estado fica indeterminado.
 - **Anotações inconsistentes no dataset original:** em 328 das 1.536 quase-cópias retiradas na fase 2, a foto retirada e a sua quase-cópia tinham quantidades diferentes de caixas nas 6 classes do escopo, principalmente em `no-helmet` e `helmet`. Isso reduz a confiabilidade das métricas de capacete.
 - **Fotos parecidas que continuam:** a fase 2 retirou só as quase-cópias entre splits até o limiar. Fotos parecidas dentro do mesmo split continuam, e quadros do mesmo vídeo podem estar em splits diferentes quando a diferença passa do limiar.
+- **Conformidade no Sentinela:** a pontuação conta 7 itens, entre eles máscara e protetor auricular, que o modelo não detecta. Enquanto essa lista não for ajustada, esses dois itens ficam indeterminados e o status "conforme" não é alcançado.
 - **Ausência de detecção ≠ ausência real:** a não detecção de uma classe positiva não é tratada como comprovação de que o EPI não está sendo usado.
 - **Protótipo acadêmico:** o sistema não é uma solução certificada de segurança do trabalho e não substitui inspeção humana.
 
@@ -329,7 +332,7 @@ As versões usadas estão fixadas no [`requirements.txt`](requirements.txt).
 
 ## Checklist da entrega
 
-| Requisito do professor | Onde foi atendido |
+| Requisitos de entrega | Onde foi atendido |
 | --- | --- |
 | 1. Nome completo dos integrantes | Seção **Integrantes** |
 | 2. Descrição detalhada do projeto, com o pipeline de processamento de imagens e explicação de cada etapa | Seções **Descrição do Projeto**, **Escopo**, **Pipeline de Processamento de Imagens** (etapas 1 a 8 e pipeline do dataset tratado) e **Serviço de processamento de imagens** |
