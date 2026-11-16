@@ -1,15 +1,14 @@
 # Contrato da API do serviço de processamento de imagens
 
-Versão 0.1.0, 16/10/2026, atualizado em 17/10/2026. Público: Vini (serviço do modelo) e quem integra o app.
+Versão 0.1.0, 16/10/2026, atualizado em 16/11/2026. Público: quem integra o serviço, como o backend do [Sentinela](https://github.com/Projeto-Semestre-6/sentinela-epi-identificador).
 
 ## Fluxo
 
-1. O app do Vini envia a foto para o nosso `POST /process`.
+1. O backend do Sentinela recebe a foto da interface e a envia ao nosso `POST /process`, com a técnica da variável `IMGPROC_TECHNIQUE`.
 2. Respondemos com um PNG do **mesmo tamanho** da imagem orientada, sem redimensionar.
-3. O app repassa esse PNG ao `POST /detect` do Vini, com um nome de arquivo terminado em `.png`, porque o `/detect` valida a extensão.
-4. As caixas que o modelo devolve valem diretamente sobre o PNG e sobre a foto orientada: as coordenadas são as mesmas.
+3. O backend passa esse PNG ao modelo YOLOv8n. Se o nosso serviço estiver fora do ar ou recusar a foto, ele usa a imagem original.
 
-O letterbox, a normalização e o NMS continuam dentro do Ultralytics, no serviço do Vini. Não os repetimos aqui.
+O letterbox, a normalização e o NMS continuam dentro do Ultralytics, no backend do Sentinela. Não os repetimos aqui.
 
 ## `POST /process`
 
@@ -106,36 +105,30 @@ curl -sS -D - -o processada.png \
 ```
 
 ```python
-import requests
-
-PROCESS_URL = "http://localhost:8001/process"  # nosso serviço
-DETECT_URL = "http://<endereço do serviço do Vini>/detect"  # ver "Em aberto"
+import httpx
 
 with open("foto.jpg", "rb") as handle:
-    processed = requests.post(
-        PROCESS_URL,
+    response = httpx.post(
+        "http://localhost:8001/process",
+        params={"technique": "none"},
         files={"file": ("foto.jpg", handle, "image/jpeg")},
         timeout=30,
     )
-processed.raise_for_status()
-detections = requests.post(
-    DETECT_URL,
-    files={"file": ("imagem.png", processed.content, "image/png")},
-    timeout=30,
-)
+response.raise_for_status()
+png = response.content  # imagem tratada, pronta para o modelo
 ```
 
 ## Como rodar
 
+Na raiz do repositório:
+
 ```bash
-cd ~/unisagrado/epi-computer-vision-genai
 .venv/bin/python -m uvicorn --app-dir src epi_imgproc.api:app --port 8001 --host 127.0.0.1
 ```
 
-**Porta.** O nosso serviço usa a 8001 por padrão (`DEFAULT_PORT` em `src/epi_imgproc/api.py`), para não colidir com o backend do Vini, que sobe na 8000 (`backend/main.py`), quando os dois rodam na mesma máquina.
+**Porta.** O nosso serviço usa a 8001 por padrão (`DEFAULT_PORT` em `src/epi_imgproc/api.py`), para não colidir com o backend do Sentinela, que sobe na 8000, quando os dois rodam na mesma máquina.
 
 ## Em aberto
 
-- Em que endereço o `/detect` responde na demo e qual nome de arquivo o app repassa a ele.
-- Qual versão do dataset no Roboflow o Vini usou no treino. O checkpoint aponta `PPE-detection-1`. Até isso ser confirmado, a avaliação A/B usa o split de validação local e compara as técnicas só entre si.
-- Se o `/detect` deve continuar com `conf=0.25` e `iou=0.45`. A regra do A/B mede o recall em `conf=0.25`.
+- Qual versão do dataset no Roboflow foi usada no treino do `best.pt`. O checkpoint aponta `PPE-detection-1`. Até isso ser confirmado, a avaliação A/B compara as técnicas só entre si.
+- Qual técnica vira o padrão. Depende do treino comparativo com o dataset tratado da fase 2; a escolhida precisa ser a mesma no serviço e na variável `IMGPROC_TECHNIQUE` do Sentinela.
