@@ -10,7 +10,6 @@ Esta versão corresponde à entrega de **Processamento de Imagens** de 16/11/202
 
 - **Neste repositório:** o serviço de processamento de imagens (`POST /process`), com testes; a avaliação A/B das técnicas de realce com o modelo treinado (`best.pt`, um YOLOv8n); e o script que gera o dataset tratado da fase 2, publicado na [Release `dataset-fase2-v1`](https://github.com/Projeto-Semestre-6/epi-computer-vision-genai/releases/tag/dataset-fase2-v1).
 - **No projeto da disciplina de IA:** a aplicação [Sentinela](https://github.com/Projeto-Semestre-6/sentinela-epi-identificador), com o modelo YOLOv8n e a interface web. O backend dela envia cada foto ao nosso `POST /process` antes da detecção.
-- **Ainda não feito:** o treino comparativo com o dataset tratado, a escolha da técnica padrão a partir dele e a avaliação final no split de teste.
 
 ---
 
